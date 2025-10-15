@@ -1,0 +1,13 @@
+package com.example.gymprojectionic;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class GymProjectIonicApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
