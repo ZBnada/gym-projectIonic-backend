@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -31,11 +32,7 @@ public class UserService {
         return user.isPresent() ? user.get() : null;
     }
 
-    public void deleteUser(Long id) {
-        // TODO Auto-generated method stub
-        userRepo.deleteById(id);
 
-    }
 
     public User getUserByEmail(String email) {
         // TODO Auto-generated method stub
@@ -43,6 +40,35 @@ public class UserService {
     }
 
 
+    public List<User> getAllUsers() {
+        return userRepo.findAll();
+    }
 
+
+    public void deleteUser(Long id) {
+        if (!userRepo.existsById(id)) {
+            throw new EntityNotFoundException("Utilisateur non trouvé avec id " + id);
+        }
+        userRepo.deleteById(id);
+    }
+
+    public User updateUser(Long id, User updatedUser) {
+        User existingUser = userRepo.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Utilisateur non trouvé avec id " + id));
+
+        existingUser.setFirstName(updatedUser.getFirstName());
+        existingUser.setLastName(updatedUser.getLastName());
+        existingUser.setEmail(updatedUser.getEmail());
+
+        if (updatedUser.getPwd() != null && !updatedUser.getPwd().isEmpty()) {
+            existingUser.setPwd(passwordEncoder.encode(updatedUser.getPwd()));
+        }
+
+        existingUser.setPhone(updatedUser.getPhone());
+        existingUser.setRole(updatedUser.getRole());
+        existingUser.setPhoto(updatedUser.getPhoto());
+
+        return userRepo.save(existingUser);
+    }
 }
 

@@ -6,9 +6,11 @@ import com.example.gymprojectionic.model.Admin;
 import com.example.gymprojectionic.model.Client;
 import com.example.gymprojectionic.model.Enum.Role;
 import com.example.gymprojectionic.model.User;
+import com.example.gymprojectionic.repository.UserRepository;
 import com.example.gymprojectionic.service.AdminService;
 import com.example.gymprojectionic.service.ClientService;
 import com.example.gymprojectionic.service.UserService;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -31,6 +33,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/users")
@@ -50,6 +54,10 @@ public class UserController {
 
     @Autowired
     private AuthenticationManager authenticationManager;
+
+    @Autowired
+    private UserRepository userRepository;
+
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -265,4 +273,131 @@ public class UserController {
 
         return ResponseEntity.badRequest().body("Rôle non reconnu !");
     }
+
+    // ---------------- GET ALL USERS ----------------
+    @GetMapping("/all")
+    public ResponseEntity<?> getAllUsers() {
+        try {
+            var users = userService.getAllUsers();
+            if (users.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Aucun utilisateur trouvé.");
+            }
+            return ResponseEntity.ok(users);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erreur lors de la récupération des utilisateurs : " + e.getMessage());
+        }
+    }
+
+    // ---------------- DELETE USER ----------------
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteUser(@PathVariable Long id) {
+        Optional<User> user = userRepository.findById(id);
+        if (user.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Utilisateur non trouvé");
+        }
+        userRepository.deleteById(id);
+        return ResponseEntity.ok("Utilisateur supprimé avec succès");
+    }
+
+    // ---------------- EDIT USER ----------------
+    @PutMapping("/{id}")
+    public ResponseEntity<User> editUser(
+            @PathVariable Long id,
+            @RequestParam String firstName,
+            @RequestParam String lastName,
+            @RequestParam String email,
+            @RequestParam(required = false) String pwd,  // ← Rendre optionnel
+            @RequestParam(required = false) Long phone,
+            @RequestParam Role role,
+            @RequestParam(required = false) MultipartFile photo
+    ) throws IOException {
+
+        Optional<User> optionalUser = userRepository.findById(id);
+        if (optionalUser.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+
+        User user = optionalUser.get();
+
+        // ✅ Mise à jour des champs simples
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+        user.setEmail(email);
+        user.setPhone(phone);
+        user.setRole(role);
+
+        // ✅ Mise à jour du mot de passe SEULEMENT si fourni
+        if (pwd != null && !pwd.trim().isEmpty()) {
+            user.setPwd(pwd); // Hash le mot de passe si nécessaire
+        }
+
+        // ✅ Mise à jour de la photo si fournie
+        if (photo != null && !photo.isEmpty()) {
+            String fileName = UUID.randomUUID() + "_" + photo.getOriginalFilename();
+            Path uploadPath = Paths.get("uploads");
+
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+
+            photo.transferTo(uploadPath.resolve(fileName));
+            user.setPhoto(fileName);
+        }
+
+        // ✅ Sauvegarde finale
+        userRepository.save(user);
+        return ResponseEntity.ok(user);
+    }
+
+    // ---------------- CHANGE PASSWORD ----------------
+    @PutMapping("/{id}/change-password")
+    public ResponseEntity<?> changePassword(
+            @PathVariable Long id,
+            @RequestParam String currentPassword,
+            @RequestParam String newPassword) {
+
+        Optional<User> optionalUser = userRepository.findById(id);
+        if (optionalUser.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Utilisateur non trouvé");
+        }
+
+        User user = optionalUser.get();
+
+        // 🔹 Vérifier le mot de passe actuel
+        if (!passwordEncoder.matches(currentPassword, user.getPwd())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Mot de passe actuel incorrect");
+        }
+
+        // 🔹 Mettre à jour avec le nouveau mot de passe hashé
+        user.setPwd(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        return ResponseEntity.ok("Mot de passe changé avec succès");
+    }
+
+    // ---------------- CHANGE PASSWORD BY EMAIL ----------------
+    @PutMapping("/change-password")
+    public ResponseEntity<?> changePasswordByEmail(
+            @RequestParam String email,
+            @RequestParam String currentPassword,
+            @RequestParam String newPassword) {
+
+        User user = userService.getUserByEmail(email);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Utilisateur non trouvé");
+        }
+
+        // 🔹 Vérifier le mot de passe actuel
+        if (!passwordEncoder.matches(currentPassword, user.getPwd())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Mot de passe actuel incorrect");
+        }
+
+        // 🔹 Mettre à jour avec le nouveau mot de passe hashé
+        user.setPwd(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        return ResponseEntity.ok("Mot de passe changé avec succès");
+    }
+
 }
